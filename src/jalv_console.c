@@ -26,6 +26,7 @@
 #  include <unistd.h>
 #endif
 
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -322,21 +323,39 @@ jalv_frontend_select_plugin(Jalv* jalv)
   return NULL;
 }
 
+void * cli_thread(void *arg) {
+  while (1) {
+    char line[1024];
+    printf("> ");
+    if (fgets(line, sizeof(line), stdin)) {
+      jalv_process_command((Jalv*) arg, line);
+    } else {
+      break;
+    }
+  }
+  return NULL;
+}
+
+pthread_t init_cli_thread(Jalv* jalv) {
+  pthread_t tid;
+  int err=pthread_create(&tid, NULL, &cli_thread, jalv);
+  if (err != 0) {
+    printf("Can't create CLI thread :[%s]", strerror(err));
+    return 0;
+  } else {
+    printf("CLI thread created successfully\n");
+    return tid;
+  }
+}
+
 int
 jalv_frontend_open(Jalv* jalv)
 {
-  if (!jalv_run_custom_ui(jalv) && !jalv->opts.non_interactive) {
-    // Primitive command prompt for setting control values
-    while (zix_sem_try_wait(&jalv->done)) {
-      char line[1024];
-      printf("> ");
-      if (fgets(line, sizeof(line), stdin)) {
-        jalv_process_command(jalv, line);
-      } else {
-        break;
-      }
-    }
-  } else {
+  if (!jalv->opts.non_interactive) {
+    init_cli_thread(jalv);
+  }
+
+  if (!jalv_run_custom_ui(jalv)) {
     zix_sem_wait(&jalv->done);
   }
 
